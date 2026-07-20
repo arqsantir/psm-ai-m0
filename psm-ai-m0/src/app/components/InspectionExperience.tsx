@@ -34,16 +34,102 @@ type InspectionPhase =
 
 type InspectionMode = "demo" | "upload" | null;
 
-const LOADING_STEP_MS = 900;
-const MIN_LOADING_DURATION_MS = 6300;
+const LOADING_STEP_MS = 3000;
+const MIN_LOADING_DURATION_MS = 22000;
 const REDUCED_LOADING_STEP_MS = 80;
 const REDUCED_LOADING_DURATION_MS = 650;
 const UPLOAD_DASHBOARD_REVEAL_MS = 2200;
+const SCORE_ANIMATION_DURATION_MS = 1200;
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
 const ACCEPTED_TYPES = ["application/pdf", "image/jpeg", "image/png"];
 
 function formatFileSize(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(bytes > 1024 * 1024 ? 1 : 2)} MB`;
+}
+
+function useAnimatedNumber(target: number, active: boolean, delay = 0) {
+  const [displayedValue, setDisplayedValue] = useState(0);
+
+  useEffect(() => {
+    if (!active) {
+      setDisplayedValue(0);
+      return;
+    }
+
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setDisplayedValue(target);
+      return;
+    }
+
+    let animationFrame = 0;
+    const delayTimer = window.setTimeout(() => {
+      const startedAt = window.performance.now();
+
+      const updateValue = (now: number) => {
+        const progress = Math.min(
+          (now - startedAt) / SCORE_ANIMATION_DURATION_MS,
+          1,
+        );
+        const easedProgress = 1 - Math.pow(1 - progress, 3);
+        setDisplayedValue(Math.round(target * easedProgress));
+
+        if (progress < 1) {
+          animationFrame = window.requestAnimationFrame(updateValue);
+        }
+      };
+
+      animationFrame = window.requestAnimationFrame(updateValue);
+    }, delay);
+
+    return () => {
+      window.clearTimeout(delayTimer);
+      window.cancelAnimationFrame(animationFrame);
+    };
+  }, [active, delay, target]);
+
+  return displayedValue;
+}
+
+function AnimatedNumber({
+  value,
+  active,
+  delay = 0,
+}: {
+  value: number;
+  active: boolean;
+  delay?: number;
+}) {
+  return <>{useAnimatedNumber(value, active, delay)}</>;
+}
+
+function useOnceVisible<T extends HTMLElement>() {
+  const elementRef = useRef<T>(null);
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    const element = elementRef.current;
+    if (!element || isVisible) return;
+
+    if (!("IntersectionObserver" in window)) {
+      setIsVisible(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "0px 0px -10%", threshold: 0.18 },
+    );
+
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [isVisible]);
+
+  return [elementRef, isVisible] as const;
 }
 
 function LandingView({
@@ -157,6 +243,7 @@ function LoadingView({
         <TerritoryVisual
           alt={`${activeScene.backgroundLabel} for the active territory inspection`}
           className="territory-loading__visual"
+          key={activeScene.scenarioId}
           priority
           scenario={scenario}
           scene={activeScene.scene}
@@ -357,7 +444,9 @@ function UploadedOpportunityRecommendation({
   return (
     <section className="opportunity reveal-section" aria-labelledby="opportunity-title">
       <div className="opportunity-score">
-        <strong>{inspection.opportunityScore}</strong>
+        <strong>
+          <AnimatedNumber active value={inspection.opportunityScore} />
+        </strong>
         <span>Opportunity score</span>
       </div>
 
@@ -367,7 +456,9 @@ function UploadedOpportunityRecommendation({
         <p>{inspection.explanation}</p>
         <div className="confidence">
           <span>Bob&apos;s confidence</span>
-          <strong>{inspection.confidence}%</strong>
+          <strong>
+            <AnimatedNumber active value={inspection.confidence} />%
+          </strong>
         </div>
         <button className="text-button" type="button" onClick={onRestart}>
           Inspect another survey
@@ -450,6 +541,8 @@ function ColinaTerritoryDashboard({
   scenarios: BobScenarioLibrary;
   onRestart: () => void;
 }) {
+  const [opportunityRef, opportunityVisible] = useOnceVisible<HTMLElement>();
+
   return (
     <main className="dark-dashboard reveal-section">
       <header className="dark-dashboard__header">
@@ -493,7 +586,11 @@ function ColinaTerritoryDashboard({
         <MetricList metrics={colinaInspectorDetails} />
       </section>
 
-      <section className="dark-opportunity" id="opportunity-score">
+      <section
+        className="dark-opportunity"
+        id="opportunity-score"
+        ref={opportunityRef}
+      >
         <div className="dark-opportunity__heading">
           <div>
             <p className="dark-eyebrow">OPPORTUNITY SCORE</p>
@@ -516,9 +613,22 @@ function ColinaTerritoryDashboard({
                 {option.recommended ? <small>Recommended</small> : null}
               </div>
               <div className="opportunity-ranking__track" aria-hidden="true">
-                <span style={{ width: `${option.score}%` }} />
+                <span
+                  style={{
+                    transitionDelay: opportunityVisible
+                      ? `${index * 90}ms`
+                      : "0ms",
+                    width: opportunityVisible ? `${option.score}%` : "0%",
+                  }}
+                />
               </div>
-              <strong className="opportunity-ranking__score">{option.score}</strong>
+              <strong className="opportunity-ranking__score">
+                <AnimatedNumber
+                  active={opportunityVisible}
+                  delay={index * 90}
+                  value={option.score}
+                />
+              </strong>
             </article>
           ))}
         </div>
