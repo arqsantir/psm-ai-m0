@@ -24,7 +24,13 @@ import {
   type TerritoryMetric,
   type TerritoryScore,
 } from "../inspection-data";
+import {
+  createPsmReportData,
+  type PsmReportData,
+} from "../report-data";
 import BobRenderer from "./BobRenderer";
+import DraggableBob from "./DraggableBob";
+import PsmReportGenerator from "./PsmReportGenerator";
 import TerritoryVisual, {
   type TerritoryImageLayer,
 } from "./TerritoryVisual";
@@ -513,9 +519,11 @@ function UploadedTerritoryDashboard({
 function UploadedOpportunityRecommendation({
   inspection,
   onRestart,
+  reportData,
 }: {
   inspection: TerritoryInspection;
   onRestart: () => void;
+  reportData: PsmReportData;
 }) {
   return (
     <section className="opportunity reveal-section" aria-labelledby="opportunity-title">
@@ -536,6 +544,7 @@ function UploadedOpportunityRecommendation({
             <AnimatedNumber active value={inspection.confidence} />%
           </strong>
         </div>
+        <PsmReportGenerator data={reportData} variant="light" />
         <button className="text-button" type="button" onClick={onRestart}>
           Inspect another survey
         </button>
@@ -686,15 +695,14 @@ function DashboardTerritoryHero({ scenarios }: { scenarios: BobScenarioLibrary }
           <span>Territory reading</span>
           <strong>Water · Contour · Vegetation · Access</strong>
         </div>
-        <div className="dashboard-bob-overlay">
+        <DraggableBob>
           <BobRenderer
             alt="Bob walking through the territory map"
             className="bob-renderer--map"
             priority
             scenario={scenarios.dashboard}
           />
-          <span>BOB · FIELD POSITION</span>
-        </div>
+        </DraggableBob>
       </TerritoryVisual>
 
       <aside className="territory-summary">
@@ -708,9 +716,11 @@ function DashboardTerritoryHero({ scenarios }: { scenarios: BobScenarioLibrary }
 function ColinaTerritoryDashboard({
   scenarios,
   onRestart,
+  reportData,
 }: {
   scenarios: BobScenarioLibrary;
   onRestart: () => void;
+  reportData: PsmReportData;
 }) {
   const [opportunityRef, opportunityVisible] = useOnceVisible<HTMLElement>();
 
@@ -810,6 +820,7 @@ function ColinaTerritoryDashboard({
           community can use the three drainage systems as organizing infrastructure
           while retaining the territory’s strongest vegetation corridors.”
         </blockquote>
+        <PsmReportGenerator data={reportData} />
       </section>
 
       <footer className="dark-dashboard__footer">
@@ -835,6 +846,16 @@ export default function InspectionExperience() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [reducedMotion, setReducedMotion] = useState(false);
   const loadingStartedAt = useRef(0);
+  const reportData = useMemo(
+    () =>
+      createPsmReportData({
+        inspection,
+        mode: mode === "upload" ? "upload" : "demo",
+        uploadedFileName: selectedFile?.name,
+        uploadedFileType: selectedFile?.type,
+      }),
+    [inspection, mode, selectedFile],
+  );
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -1038,6 +1059,7 @@ export default function InspectionExperience() {
       <ColinaTerritoryDashboard
         scenarios={scenarios}
         onRestart={restartInspection}
+        reportData={reportData}
       />
     );
   }
@@ -1054,6 +1076,7 @@ export default function InspectionExperience() {
         <UploadedOpportunityRecommendation
           inspection={inspection}
           onRestart={restartInspection}
+          reportData={reportData}
         />
       ) : null}
     </main>
