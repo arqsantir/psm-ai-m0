@@ -1,12 +1,29 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import {
+  type ChangeEvent,
+  type FormEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import {
+  type BobScenarioLibrary,
+  useBobScenarioLibrary,
+} from "../bob-assets";
 import {
   colinaCondesaInspection,
-  loadingMessages,
+  colinaInspectorDetails,
+  colinaOpportunities,
+  colinaTerritoryMetrics,
+  loadingScenes,
+  type TerritoryInspection,
+  type TerritoryMetric,
   type TerritoryScore,
 } from "../inspection-data";
+import BobRenderer from "./BobRenderer";
+import TerritoryVisual from "./TerritoryVisual";
 
 type InspectionPhase =
   | "landing"
@@ -15,17 +32,40 @@ type InspectionPhase =
   | "dashboard"
   | "opportunity";
 
-const LOADING_STEP_MS = 820;
-const LOADING_DURATION_MS = 5000;
-const NARRATIVE_REVEAL_MS = 1800;
-const DASHBOARD_REVEAL_MS = 2200;
+type InspectionMode = "demo" | "upload" | null;
 
-function LandingView({ onStart }: { onStart: () => void }) {
+const LOADING_STEP_MS = 900;
+const MIN_LOADING_DURATION_MS = 6300;
+const REDUCED_LOADING_STEP_MS = 80;
+const REDUCED_LOADING_DURATION_MS = 650;
+const UPLOAD_DASHBOARD_REVEAL_MS = 2200;
+const MAX_FILE_SIZE = 20 * 1024 * 1024;
+const ACCEPTED_TYPES = ["application/pdf", "image/jpeg", "image/png"];
+
+function formatFileSize(bytes: number) {
+  return `${(bytes / 1024 / 1024).toFixed(bytes > 1024 * 1024 ? 1 : 2)} MB`;
+}
+
+function LandingView({
+  selectedFile,
+  error,
+  scenarios,
+  onFileChange,
+  onSubmit,
+  onDemo,
+}: {
+  selectedFile: File | null;
+  error: string | null;
+  scenarios: BobScenarioLibrary;
+  onFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onDemo: () => void;
+}) {
   return (
     <main className="experience">
       <section className="hero hero--landing">
         <div className="hero-copy">
-          <p className="eyebrow">PSM AI · TERRITORY INSPECTION</p>
+          <p className="eyebrow">BOB · AI TERRITORY INSPECTOR</p>
           <h1>
             Upload a survey.
             <br />
@@ -34,27 +74,55 @@ function LandingView({ onStart }: { onStart: () => void }) {
           <p className="lead">
             The land is already speaking. Bob combines terrain, water,
             vegetation, access and development logic into one clear territorial
-            reading.
+            reading using the PSM methodology.
           </p>
-          <div className="actions">
-            <button type="button" onClick={onStart}>
-              Try Colina Condesa
-            </button>
-            <span>Demo site · 3 hectares</span>
-          </div>
+
+          <form className="upload-form" onSubmit={onSubmit}>
+            <label className={`upload-field${selectedFile ? " has-file" : ""}`}>
+              <input
+                accept="application/pdf,image/jpeg,image/png"
+                name="survey"
+                onChange={onFileChange}
+                type="file"
+              />
+              <span className="upload-field__label">
+                {selectedFile ? "Survey ready" : "Upload survey"}
+              </span>
+              <strong>{selectedFile?.name || "PDF, JPG or PNG"}</strong>
+              <small>
+                {selectedFile
+                  ? `${selectedFile.type.replace("image/", "").toUpperCase()} · ${formatFileSize(selectedFile.size)}`
+                  : "One property document · Maximum 20 MB"}
+              </small>
+            </label>
+
+            {error ? (
+              <p className="upload-error" role="alert">
+                {error}
+              </p>
+            ) : null}
+
+            <div className="actions">
+              <button disabled={!selectedFile} type="submit">
+                Inspect uploaded survey
+              </button>
+              <button className="secondary-action" type="button" onClick={onDemo}>
+                Start Inspection
+              </button>
+            </div>
+          </form>
         </div>
 
-        <div className="bob-card">
-          <Image
-            src="/assets/bob.jpg"
-            alt="Bob, PSM AI territory inspector"
-            fill
+        <div className="bob-card bob-card--library">
+          <BobRenderer
+            alt="Bob, AI Territory Inspector"
+            className="bob-renderer--landing"
             priority
-            sizes="(max-width: 850px) 100vw, 42vw"
+            scenario={scenarios.landing}
           />
           <div className="bob-caption">
-            <strong>Bob</strong>
-            <span>AI territory inspector</span>
+            <strong>BOB</strong>
+            <span>AI Territory Inspector</span>
           </div>
         </div>
       </section>
@@ -62,47 +130,77 @@ function LandingView({ onStart }: { onStart: () => void }) {
   );
 }
 
-function LoadingView({ activeIndex }: { activeIndex: number }) {
-  const progress = ((activeIndex + 1) / loadingMessages.length) * 100;
+function LoadingView({
+  activeIndex,
+  fileName,
+  scenarios,
+}: {
+  activeIndex: number;
+  fileName: string;
+  scenarios: BobScenarioLibrary;
+}) {
+  const activeScene = loadingScenes[activeIndex] || loadingScenes[0];
+  const scenario = scenarios[activeScene.scenarioId];
+  const progress = ((activeIndex + 1) / loadingScenes.length) * 100;
 
   return (
-    <main className="experience">
-      <section className="loading-layout">
-        <div className="loading-copy">
-          <p className="eyebrow">COLINA CONDESA · FIRST INSPECTION</p>
-          <h1>Bob is reading the territory.</h1>
-          <p className="lead">
-            Following the evidence from terrain to opportunity, one system at a
-            time.
-          </p>
+    <main className="experience experience--loading">
+      <section className="territory-loading">
+        <header className="territory-loading__header">
+          <div>
+            <strong>BOB</strong>
+            <span>AI Territory Inspector</span>
+          </div>
+          <p>{fileName}</p>
+        </header>
 
-          <div
-            className="loading-status"
-            role="status"
-            aria-live="polite"
-            aria-atomic="true"
-          >
-            <span className="loading-count">
-              {String(activeIndex + 1).padStart(2, "0")} / 06
+        <TerritoryVisual
+          alt={`${activeScene.backgroundLabel} for the active territory inspection`}
+          className="territory-loading__visual"
+          priority
+          scenario={scenario}
+          scene={activeScene.scene}
+        >
+          <div className="territory-loading__readout">
+            <p className="dark-eyebrow">LIVE TERRITORY INSPECTION</p>
+            <span className="territory-loading__count">
+              {String(activeIndex + 1).padStart(2, "0")} / {String(loadingScenes.length).padStart(2, "0")}
             </span>
-            <p className="loading-message" key={loadingMessages[activeIndex]}>
-              {loadingMessages[activeIndex]}
-            </p>
+            <h1 key={activeScene.message}>{activeScene.message}</h1>
+            <div className="territory-loading__source">
+              <span>{activeScene.backgroundLabel}</span>
+              <strong>Bob · {scenario.label || activeScene.bobAction}</strong>
+            </div>
           </div>
 
-          <div
-            className="progress-track"
-            role="progressbar"
-            aria-label="Territory inspection progress"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={Math.round(progress)}
-          >
-            <span style={{ width: `${progress}%` }} />
+          <div className="territory-loading__bob">
+            <BobRenderer
+              alt={`Bob ${activeScene.bobAction.toLowerCase()} while inspecting the territory`}
+              className="bob-renderer--territory-overlay"
+              priority
+              scenario={scenario}
+            />
           </div>
 
-          <ol className="loading-steps" aria-hidden="true">
-            {loadingMessages.map((message, index) => {
+          <div className="territory-loading__progress">
+            <div className="loading-progress-meta" aria-hidden="true">
+              <span>Territory understanding</span>
+              <strong>{Math.round(progress)}%</strong>
+            </div>
+            <div
+              className="progress-track progress-track--inspection"
+              role="progressbar"
+              aria-label="Territory inspection progress"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(progress)}
+            >
+              <span style={{ width: `${progress}%` }} />
+            </div>
+          </div>
+
+          <ol className="territory-loading__steps" aria-hidden="true">
+            {loadingScenes.map((scene, index) => {
               const state =
                 index < activeIndex
                   ? "is-complete"
@@ -111,69 +209,67 @@ function LoadingView({ activeIndex }: { activeIndex: number }) {
                     : "";
 
               return (
-                <li className={state} key={message}>
+                <li className={state} key={scene.scenarioId}>
                   <span>{String(index + 1).padStart(2, "0")}</span>
-                  {message}
+                  {scene.message}
                 </li>
               );
             })}
           </ol>
-        </div>
-
-        <div className="bob-card bob-card--loading">
-          <Image
-            src="/assets/bob.jpg"
-            alt="Bob inspecting Colina Condesa"
-            fill
-            priority
-            sizes="(max-width: 850px) 100vw, 42vw"
-          />
-          <div className="inspection-pulse" aria-hidden="true" />
-          <div className="bob-caption">
-            <strong>Bob</strong>
-            <span>Inspection in progress</span>
-          </div>
-        </div>
+        </TerritoryVisual>
       </section>
     </main>
   );
 }
 
-function BobNarrative() {
-  const inspection = colinaCondesaInspection;
-
+function BobNarrative({
+  inspection,
+  scenarios,
+  onContinue,
+}: {
+  inspection: TerritoryInspection;
+  scenarios: BobScenarioLibrary;
+  onContinue: () => void;
+}) {
   return (
-    <section className="inspection-narrative reveal-section">
-      <div className="narrative-copy">
-        <p className="eyebrow">BOB · FIRST TERRITORIAL READING</p>
-        <div className="site-meta" aria-label="Property information">
-          <span>{inspection.property}</span>
-          <span>{inspection.area}</span>
+    <main className="experience experience--results">
+      <section className="inspection-narrative reveal-section">
+        <div className="narrative-copy">
+          <p className="eyebrow">BOB · AI TERRITORY INSPECTOR</p>
+          <div className="site-meta" aria-label="Property information">
+            <span>{inspection.property}</span>
+            <span>{inspection.area}</span>
+          </div>
+          <h1>{inspection.narrativeHeadline}</h1>
+          <div className="bob-narrative">
+            {inspection.narrative.map((paragraph, index) => (
+              <p
+                className={index === 0 ? "narrative-opening" : ""}
+                key={`${index}-${paragraph}`}
+              >
+                {paragraph}
+              </p>
+            ))}
+          </div>
+          <button className="narrative-action" type="button" onClick={onContinue}>
+            See territory intelligence
+          </button>
         </div>
-        <h1>The ground already knows where development belongs.</h1>
-        <div className="bob-narrative">
-          {inspection.narrative.map((paragraph, index) => (
-            <p className={index === 0 ? "narrative-opening" : ""} key={paragraph}>
-              {paragraph}
-            </p>
-          ))}
-        </div>
-      </div>
 
-      <div className="bob-card bob-card--narrative">
-        <Image
-          src="/assets/bob.jpg"
-          alt="Bob presenting his Colina Condesa inspection"
-          fill
-          priority
-          sizes="(max-width: 850px) 100vw, 42vw"
-        />
-        <div className="bob-caption">
-          <strong>Bob</strong>
-          <span>The territory is speaking</span>
+        <div className="bob-card bob-card--narrative bob-card--library">
+          <BobRenderer
+            alt="Bob presenting his territory inspection"
+            className="bob-renderer--narrative"
+            priority
+            scenario={scenarios.narrative}
+          />
+          <div className="bob-caption">
+            <strong>BOB</strong>
+            <span>The territory is speaking</span>
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </main>
   );
 }
 
@@ -195,18 +291,22 @@ function ScoreRow({ score }: { score: TerritoryScore }) {
   );
 }
 
-function TerritoryDashboard() {
-  const inspection = colinaCondesaInspection;
-
+function UploadedTerritoryDashboard({
+  inspection,
+  previewUrl,
+}: {
+  inspection: TerritoryInspection;
+  previewUrl: string | null;
+}) {
   return (
     <section className="dashboard reveal-section" aria-labelledby="dashboard-title">
       <div className="dashboard-header">
         <div>
-          <p className="eyebrow">TERRITORY DASHBOARD</p>
+          <p className="eyebrow">BOB · TERRITORY DASHBOARD</p>
           <h2 id="dashboard-title">What the land wants to become</h2>
         </div>
         <div className="dashboard-summary">
-          <strong>5</strong>
+          <strong>{inspection.scores.length}</strong>
           <span>systems inspected</span>
         </div>
       </div>
@@ -214,9 +314,14 @@ function TerritoryDashboard() {
       <div className="grid">
         <div className="visual">
           <Image
-            src="/assets/wellness-territory.png"
-            alt="Low-impact wellness architecture integrated with the territory"
+            src={previewUrl || "/assets/demo/colina-condesa/overlays.png"}
+            alt={
+              previewUrl
+                ? "Uploaded territory survey"
+                : "Low-impact architecture integrated with territory"
+            }
             fill
+            unoptimized={Boolean(previewUrl)}
             sizes="(max-width: 850px) 100vw, 60vw"
           />
         </div>
@@ -231,7 +336,7 @@ function TerritoryDashboard() {
         <p className="eyebrow">MAIN FINDINGS</p>
         <div className="findings-grid">
           {inspection.mainFindings.map((finding, index) => (
-            <article key={finding}>
+            <article key={`${index}-${finding}`}>
               <span>{String(index + 1).padStart(2, "0")}</span>
               <p>{finding}</p>
             </article>
@@ -242,9 +347,13 @@ function TerritoryDashboard() {
   );
 }
 
-function OpportunityRecommendation({ onRestart }: { onRestart: () => void }) {
-  const inspection = colinaCondesaInspection;
-
+function UploadedOpportunityRecommendation({
+  inspection,
+  onRestart,
+}: {
+  inspection: TerritoryInspection;
+  onRestart: () => void;
+}) {
   return (
     <section className="opportunity reveal-section" aria-labelledby="opportunity-title">
       <div className="opportunity-score">
@@ -261,92 +370,410 @@ function OpportunityRecommendation({ onRestart }: { onRestart: () => void }) {
           <strong>{inspection.confidence}%</strong>
         </div>
         <button className="text-button" type="button" onClick={onRestart}>
-          Run inspection again
+          Inspect another survey
         </button>
       </div>
     </section>
   );
 }
 
+function MetricList({ metrics }: { metrics: TerritoryMetric[] }) {
+  return (
+    <dl className="intelligence-metrics">
+      {metrics.map((metric) => (
+        <div key={metric.label}>
+          <dt>{metric.label}</dt>
+          <dd>{metric.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function DashboardTerritoryHero({ scenarios }: { scenarios: BobScenarioLibrary }) {
+  return (
+    <section className="territory-overview territory-overview--alive" aria-label="Colina Condesa territory overview">
+      <TerritoryVisual
+        alt="Colina Condesa territory synthesis with inspection overlays"
+        className="territory-map territory-map--alive"
+        priority
+        scenario={scenarios.dashboard}
+        scene="synthesis"
+      >
+        <div className="map-marker map-marker--watersheds">
+          <span>01</span>
+          <strong>Three watersheds</strong>
+        </div>
+        <div className="map-marker map-marker--plateau">
+          <span>02</span>
+          <strong>Northern plateau</strong>
+        </div>
+        <div className="map-marker map-marker--access">
+          <span>03</span>
+          <strong>Main access</strong>
+        </div>
+        <div className="map-marker map-marker--corridor">
+          <span>04</span>
+          <strong>Vegetation corridor</strong>
+        </div>
+        <div className="map-marker map-marker--opportunity">
+          <span>05</span>
+          <strong>Opportunity area</strong>
+        </div>
+        <div className="map-legend">
+          <span>Territory reading</span>
+          <strong>Water · Contour · Vegetation · Access</strong>
+        </div>
+        <div className="dashboard-bob-overlay">
+          <BobRenderer
+            alt="Bob walking through the territory map"
+            className="bob-renderer--map"
+            priority
+            scenario={scenarios.dashboard}
+          />
+          <span>BOB · FIELD POSITION</span>
+        </div>
+      </TerritoryVisual>
+
+      <aside className="territory-summary">
+        <p className="dark-eyebrow">TERRITORY SUMMARY</p>
+        <MetricList metrics={colinaTerritoryMetrics} />
+      </aside>
+    </section>
+  );
+}
+
+function ColinaTerritoryDashboard({
+  scenarios,
+  onRestart,
+}: {
+  scenarios: BobScenarioLibrary;
+  onRestart: () => void;
+}) {
+  return (
+    <main className="dark-dashboard reveal-section">
+      <header className="dark-dashboard__header">
+        <div className="dark-brand">
+          <strong>BOB</strong>
+          <span>COLINA CONDESA · MAZATLÁN · 3 HA</span>
+        </div>
+        <div className="inspection-complete">
+          <span aria-hidden="true" />
+          Inspection complete
+        </div>
+      </header>
+
+      <section className="dark-dashboard__intro">
+        <div>
+          <p className="dark-eyebrow">AI TERRITORY INSPECTOR · PSM METHODOLOGY</p>
+          <h1>The land reveals a low-impact development structure.</h1>
+        </div>
+        <p>
+          Three watersheds organize the site. The northern plateau offers the
+          strongest balance between access, buildability and ecological value.
+        </p>
+      </section>
+
+      <DashboardTerritoryHero scenarios={scenarios} />
+
+      <section className="bob-inspector-panel">
+        <div className="bob-inspector-panel__heading">
+          <div className="bob-inspector-avatar bob-inspector-avatar--library">
+            <BobRenderer
+              alt="Bob considering the territory intelligence"
+              compact
+              scenario={scenarios["inspector-panel"]}
+            />
+          </div>
+          <div>
+            <p className="dark-eyebrow">BOB · AI TERRITORY INSPECTOR</p>
+            <h2>Build with the contours.</h2>
+          </div>
+        </div>
+        <MetricList metrics={colinaInspectorDetails} />
+      </section>
+
+      <section className="dark-opportunity" id="opportunity-score">
+        <div className="dark-opportunity__heading">
+          <div>
+            <p className="dark-eyebrow">OPPORTUNITY SCORE</p>
+            <h2>What the territory can support</h2>
+          </div>
+          <span>BOB&apos;S RECOMMENDATION</span>
+        </div>
+
+        <div className="opportunity-ranking">
+          {colinaOpportunities.map((option, index) => (
+            <article
+              className={option.recommended ? "is-recommended" : ""}
+              key={option.label}
+            >
+              <span className="opportunity-ranking__index">
+                {String(index + 1).padStart(2, "0")}
+              </span>
+              <div className="opportunity-ranking__label">
+                <strong>{option.label}</strong>
+                {option.recommended ? <small>Recommended</small> : null}
+              </div>
+              <div className="opportunity-ranking__track" aria-hidden="true">
+                <span style={{ width: `${option.score}%` }} />
+              </div>
+              <strong className="opportunity-ranking__score">{option.score}</strong>
+            </article>
+          ))}
+        </div>
+
+        <blockquote>
+          “The northern plateau provides the best balance between access,
+          buildability and ecological preservation. A low-density eco-residential
+          community can use the three drainage systems as organizing infrastructure
+          while retaining the territory’s strongest vegetation corridors.”
+        </blockquote>
+      </section>
+
+      <footer className="dark-dashboard__footer">
+        <p>Evidence → Intelligence → Decisions</p>
+        <button type="button" onClick={onRestart}>
+          Run inspection again
+        </button>
+      </footer>
+    </main>
+  );
+}
+
 export default function InspectionExperience() {
+  const scenarios = useBobScenarioLibrary();
   const [phase, setPhase] = useState<InspectionPhase>("landing");
+  const [mode, setMode] = useState<InspectionMode>(null);
   const [loadingIndex, setLoadingIndex] = useState(0);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [inspection, setInspection] = useState<TerritoryInspection>(
+    colinaCondesaInspection,
+  );
+  const [error, setError] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const loadingStartedAt = useRef(0);
 
   useEffect(() => {
-    if (phase !== "loading") {
-      return;
-    }
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const updatePreference = () => setReducedMotion(mediaQuery.matches);
+
+    updatePreference();
+    mediaQuery.addEventListener("change", updatePreference);
+    return () => mediaQuery.removeEventListener("change", updatePreference);
+  }, []);
+
+  useEffect(() => {
+    if (phase !== "loading") return;
 
     setLoadingIndex(0);
-
-    const stepTimers = loadingMessages.map((_, index) =>
-      window.setTimeout(() => setLoadingIndex(index), index * LOADING_STEP_MS),
+    const stepDuration = reducedMotion
+      ? REDUCED_LOADING_STEP_MS
+      : LOADING_STEP_MS;
+    const stepTimers = loadingScenes.slice(1).map((_, index) =>
+      window.setTimeout(
+        () => setLoadingIndex(index + 1),
+        (index + 1) * stepDuration,
+      ),
     );
-    const completionTimer = window.setTimeout(
-      () => setPhase("narrative"),
-      LOADING_DURATION_MS,
-    );
 
-    return () => {
-      stepTimers.forEach(window.clearTimeout);
-      window.clearTimeout(completionTimer);
-    };
-  }, [phase]);
+    return () => stepTimers.forEach(window.clearTimeout);
+  }, [phase, reducedMotion]);
 
   useEffect(() => {
-    if (phase !== "narrative") {
-      return;
-    }
-
-    const timer = window.setTimeout(
-      () => setPhase("dashboard"),
-      NARRATIVE_REVEAL_MS,
-    );
-
-    return () => window.clearTimeout(timer);
-  }, [phase]);
-
-  useEffect(() => {
-    if (phase !== "dashboard") {
-      return;
-    }
-
+    if (phase !== "dashboard" || mode !== "upload") return;
     const timer = window.setTimeout(
       () => setPhase("opportunity"),
-      DASHBOARD_REVEAL_MS,
+      reducedMotion ? 100 : UPLOAD_DASHBOARD_REVEAL_MS,
     );
-
     return () => window.clearTimeout(timer);
-  }, [phase]);
+  }, [mode, phase, reducedMotion]);
 
-  const startInspection = () => {
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
+  const beginLoading = (nextMode: Exclude<InspectionMode, null>) => {
+    loadingStartedAt.current = Date.now();
+    setMode(nextMode);
+    setLoadingIndex(0);
+    setError(null);
     setPhase("loading");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({ top: 0, behavior: reducedMotion ? "auto" : "smooth" });
+  };
+
+  const revealInspection = async (nextInspection: TerritoryInspection) => {
+    const minimumDuration = reducedMotion
+      ? REDUCED_LOADING_DURATION_MS
+      : MIN_LOADING_DURATION_MS;
+    const elapsed = Date.now() - loadingStartedAt.current;
+
+    if (elapsed < minimumDuration) {
+      await new Promise((resolve) =>
+        window.setTimeout(resolve, minimumDuration - elapsed),
+      );
+    }
+
+    setInspection(nextInspection);
+    setPhase("narrative");
+  };
+
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] || null;
+    setError(null);
+
+    if (!file) {
+      setSelectedFile(null);
+      return;
+    }
+    if (!ACCEPTED_TYPES.includes(file.type)) {
+      setSelectedFile(null);
+      setError("Upload a PDF, JPG, or PNG survey.");
+      event.target.value = "";
+      return;
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      setSelectedFile(null);
+      setError("The survey must be 20 MB or smaller.");
+      event.target.value = "";
+      return;
+    }
+
+    setSelectedFile(file);
+  };
+
+  const inspectUpload = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selectedFile) return;
+
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(
+      selectedFile.type.startsWith("image/")
+        ? URL.createObjectURL(selectedFile)
+        : null,
+    );
+    beginLoading("upload");
+
+    try {
+      const formData = new FormData();
+      formData.append("survey", selectedFile);
+      const response = await fetch("/api/inspect", {
+        method: "POST",
+        body: formData,
+      });
+      const body = (await response.json()) as {
+        inspection?: TerritoryInspection;
+        error?: string;
+      };
+
+      if (!response.ok || !body.inspection) {
+        throw new Error(body.error || "Bob could not inspect this survey.");
+      }
+
+      await revealInspection(body.inspection);
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Bob could not inspect this survey.",
+      );
+      setMode(null);
+      setPhase("landing");
+    }
+  };
+
+  const runDemo = async () => {
+    setSelectedFile(null);
+    setError(null);
+    setInspection(colinaCondesaInspection);
+
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(null);
+
+    beginLoading("demo");
+    await revealInspection(colinaCondesaInspection);
+  };
+
+  const continueToIntelligence = () => {
+    setPhase("dashboard");
+    window.scrollTo({ top: 0, behavior: reducedMotion ? "auto" : "smooth" });
   };
 
   const restartInspection = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+
     setLoadingIndex(0);
+    setSelectedFile(null);
+    setInspection(colinaCondesaInspection);
+    setPreviewUrl(null);
+    setError(null);
+    setMode(null);
     setPhase("landing");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({ top: 0, behavior: reducedMotion ? "auto" : "smooth" });
   };
 
   if (phase === "landing") {
-    return <LandingView onStart={startInspection} />;
+    return (
+      <LandingView
+        selectedFile={selectedFile}
+        error={error}
+        scenarios={scenarios}
+        onFileChange={handleFileChange}
+        onSubmit={inspectUpload}
+        onDemo={runDemo}
+      />
+    );
   }
 
   if (phase === "loading") {
-    return <LoadingView activeIndex={loadingIndex} />;
+    return (
+      <LoadingView
+        activeIndex={loadingIndex}
+        fileName={
+          mode === "demo"
+            ? "COLINA CONDESA · MAZATLÁN · 3 HA"
+            : selectedFile?.name || "UPLOADED SURVEY"
+        }
+        scenarios={scenarios}
+      />
+    );
   }
 
-  const showDashboard = phase === "dashboard" || phase === "opportunity";
-  const showOpportunity = phase === "opportunity";
+  if (phase === "narrative") {
+    return (
+      <BobNarrative
+        inspection={inspection}
+        scenarios={scenarios}
+        onContinue={continueToIntelligence}
+      />
+    );
+  }
+
+  if (mode === "demo") {
+    return (
+      <ColinaTerritoryDashboard
+        scenarios={scenarios}
+        onRestart={restartInspection}
+      />
+    );
+  }
+
+  const showUploadOpportunity = phase === "opportunity";
 
   return (
     <main className="experience experience--results">
-      <BobNarrative />
-      {showDashboard ? <TerritoryDashboard /> : null}
-      {showOpportunity ? (
-        <OpportunityRecommendation onRestart={restartInspection} />
+      <UploadedTerritoryDashboard
+        inspection={inspection}
+        previewUrl={previewUrl}
+      />
+      {showUploadOpportunity ? (
+        <UploadedOpportunityRecommendation
+          inspection={inspection}
+          onRestart={restartInspection}
+        />
       ) : null}
     </main>
   );
