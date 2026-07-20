@@ -21,7 +21,14 @@ type TerritoryVisualProps = {
   className?: string;
   alt: string;
   priority?: boolean;
+  imageLayers?: readonly TerritoryImageLayer[];
   children?: ReactNode;
+};
+
+export type TerritoryImageLayer = {
+  id: string;
+  src: string;
+  visible: boolean;
 };
 
 export default function TerritoryVisual({
@@ -30,11 +37,17 @@ export default function TerritoryVisual({
   className = "",
   alt,
   priority = false,
+  imageLayers,
   children,
 }: TerritoryVisualProps) {
   const classes = ["territory-visual", `territory-visual--${scene}`, className]
     .filter(Boolean)
     .join(" ");
+
+  const resolvedLayers =
+    imageLayers && imageLayers.length > 0
+      ? imageLayers
+      : [{ id: scene, src: territoryAssets[scene], visible: true }];
 
   return (
     <div
@@ -42,13 +55,21 @@ export default function TerritoryVisual({
       data-bob-scenario={scenario?.id}
       data-territory-scene={scene}
     >
-      <img
-        alt={alt}
-        className="territory-visual__image"
-        decoding="async"
-        loading={priority ? "eager" : "lazy"}
-        src={territoryAssets[scene]}
-      />
+      {resolvedLayers.map((layer, index) => (
+        <img
+          alt={index === 0 ? alt : ""}
+          aria-hidden={index === 0 ? undefined : true}
+          className={`territory-visual__image${
+            imageLayers ? " territory-visual__layer" : ""
+          }`}
+          data-territory-layer={layer.id}
+          decoding="async"
+          key={layer.id}
+          loading={priority ? "eager" : "lazy"}
+          src={layer.src}
+          style={imageLayers ? { opacity: layer.visible ? 1 : 0 } : undefined}
+        />
+      ))}
       <div className="territory-visual__grade" aria-hidden="true" />
       {children}
     </div>

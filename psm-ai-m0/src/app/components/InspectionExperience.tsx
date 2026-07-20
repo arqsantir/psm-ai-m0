@@ -4,7 +4,9 @@ import Image from "next/image";
 import {
   type ChangeEvent,
   type FormEvent,
+  useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -23,7 +25,9 @@ import {
   type TerritoryScore,
 } from "../inspection-data";
 import BobRenderer from "./BobRenderer";
-import TerritoryVisual from "./TerritoryVisual";
+import TerritoryVisual, {
+  type TerritoryImageLayer,
+} from "./TerritoryVisual";
 
 type InspectionPhase =
   | "landing"
@@ -39,9 +43,81 @@ const MIN_LOADING_DURATION_MS = 22000;
 const REDUCED_LOADING_STEP_MS = 80;
 const REDUCED_LOADING_DURATION_MS = 650;
 const UPLOAD_DASHBOARD_REVEAL_MS = 2200;
-const SCORE_ANIMATION_DURATION_MS = 1200;
+const SCORE_ANIMATION_DURATION_MS = 1500;
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
 const ACCEPTED_TYPES = ["application/pdf", "image/jpeg", "image/png"];
+const TERRITORY_ASSET_ROOT = "/assets/demo/colina-condesa";
+
+type TerritoryLayerId =
+  | "orthophoto"
+  | "survey"
+  | "dem"
+  | "contours"
+  | "drainage"
+  | "vegetation"
+  | "access"
+  | "opportunity";
+
+type TerritoryLayerState = Record<TerritoryLayerId, boolean>;
+
+const territoryLayerDefinitions: readonly {
+  id: TerritoryLayerId;
+  label: string;
+  observation: string;
+}[] = [
+  {
+    id: "orthophoto",
+    label: "Orthophoto",
+    observation: "The orthophoto shows the territory as it exists today.",
+  },
+  {
+    id: "survey",
+    label: "Survey",
+    observation: "The survey confirms a gradual slope toward the southeast.",
+  },
+  {
+    id: "dem",
+    label: "DEM",
+    observation: "The terrain reveals three primary drainage basins.",
+  },
+  {
+    id: "contours",
+    label: "Contours",
+    observation: "The contours show where the land wants movement to slow down.",
+  },
+  {
+    id: "drainage",
+    label: "Drainage",
+    observation: "Three natural watersheds organize this property.",
+  },
+  {
+    id: "vegetation",
+    label: "Vegetation",
+    observation: "The healthiest ecological corridor crosses the northern plateau.",
+  },
+  {
+    id: "access",
+    label: "Access",
+    observation: "The southeast approach provides the clearest access to the property.",
+  },
+  {
+    id: "opportunity",
+    label: "Opportunity",
+    observation:
+      "This area provides the best balance between access, terrain and ecological value.",
+  },
+];
+
+const initialTerritoryLayers: TerritoryLayerState = {
+  orthophoto: true,
+  survey: true,
+  dem: true,
+  contours: true,
+  drainage: true,
+  vegetation: true,
+  access: true,
+  opportunity: true,
+};
 
 function formatFileSize(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(bytes > 1024 * 1024 ? 1 : 2)} MB`;
@@ -482,36 +558,131 @@ function MetricList({ metrics }: { metrics: TerritoryMetric[] }) {
 }
 
 function DashboardTerritoryHero({ scenarios }: { scenarios: BobScenarioLibrary }) {
+  const [visibleLayers, setVisibleLayers] = useState<TerritoryLayerState>(
+    initialTerritoryLayers,
+  );
+  const [observedLayer, setObservedLayer] =
+    useState<TerritoryLayerId>("opportunity");
+
+  const imageLayers = useMemo<readonly TerritoryImageLayer[]>(
+    () => [
+      {
+        id: "orthophoto",
+        src: `${TERRITORY_ASSET_ROOT}/terrain.png`,
+        visible: visibleLayers.orthophoto,
+      },
+      {
+        id: "survey",
+        src: `${TERRITORY_ASSET_ROOT}/survey.png`,
+        visible: visibleLayers.survey,
+      },
+      {
+        id: "dem",
+        src: `${TERRITORY_ASSET_ROOT}/dem.png`,
+        visible: visibleLayers.dem,
+      },
+      {
+        id: "opportunity",
+        src: `${TERRITORY_ASSET_ROOT}/overlays.png`,
+        visible: visibleLayers.opportunity,
+      },
+    ],
+    [
+      visibleLayers.dem,
+      visibleLayers.opportunity,
+      visibleLayers.orthophoto,
+      visibleLayers.survey,
+    ],
+  );
+
+  const activeObservation =
+    territoryLayerDefinitions.find((layer) => layer.id === observedLayer)
+      ?.observation || territoryLayerDefinitions[0].observation;
+
+  const toggleLayer = useCallback((layerId: TerritoryLayerId) => {
+    setVisibleLayers((currentLayers) => ({
+      ...currentLayers,
+      [layerId]: !currentLayers[layerId],
+    }));
+    setObservedLayer(layerId);
+  }, []);
+
+  const layerClassName = (layerId: TerritoryLayerId) =>
+    visibleLayers[layerId] ? "" : " is-layer-hidden";
+
   return (
     <section className="territory-overview territory-overview--alive" aria-label="Colina Condesa territory overview">
       <TerritoryVisual
         alt="Colina Condesa territory synthesis with inspection overlays"
         className="territory-map territory-map--alive"
+        imageLayers={imageLayers}
         priority
         scenario={scenarios.dashboard}
         scene="synthesis"
       >
-        <div className="map-marker map-marker--watersheds">
+        <fieldset className="territory-layer-controls">
+          <legend>TERRITORY LAYERS</legend>
+          <div className="territory-layer-controls__grid">
+            {territoryLayerDefinitions.map((layer) => (
+              <label key={layer.id}>
+                <input
+                  checked={visibleLayers[layer.id]}
+                  onChange={() => toggleLayer(layer.id)}
+                  type="checkbox"
+                />
+                <span>{layer.label}</span>
+              </label>
+            ))}
+          </div>
+          <p
+            aria-live="polite"
+            className="territory-layer-observation"
+            key={observedLayer}
+          >
+            <strong>BOB OBSERVES</strong>
+            <span>{activeObservation}</span>
+          </p>
+        </fieldset>
+
+        <div
+          aria-hidden={!visibleLayers.drainage}
+          className={`map-marker map-marker--watersheds${layerClassName("drainage")}`}
+        >
           <span>01</span>
           <strong>Three watersheds</strong>
         </div>
-        <div className="map-marker map-marker--plateau">
+        <div
+          aria-hidden={!visibleLayers.contours}
+          className={`map-marker map-marker--plateau${layerClassName("contours")}`}
+        >
           <span>02</span>
           <strong>Northern plateau</strong>
         </div>
-        <div className="map-marker map-marker--access">
+        <div
+          aria-hidden={!visibleLayers.access}
+          className={`map-marker map-marker--access${layerClassName("access")}`}
+        >
           <span>03</span>
           <strong>Main access</strong>
         </div>
-        <div className="map-marker map-marker--corridor">
+        <div
+          aria-hidden={!visibleLayers.vegetation}
+          className={`map-marker map-marker--corridor${layerClassName("vegetation")}`}
+        >
           <span>04</span>
           <strong>Vegetation corridor</strong>
         </div>
-        <div className="map-marker map-marker--opportunity">
+        <div
+          aria-hidden={!visibleLayers.opportunity}
+          className={`map-marker map-marker--opportunity${layerClassName("opportunity")}`}
+        >
           <span>05</span>
           <strong>Opportunity area</strong>
         </div>
-        <div className="map-legend">
+        <div
+          aria-hidden={!visibleLayers.survey}
+          className={`map-legend${layerClassName("survey")}`}
+        >
           <span>Territory reading</span>
           <strong>Water · Contour · Vegetation · Access</strong>
         </div>
