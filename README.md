@@ -20,7 +20,7 @@ https://psm-ai-m0.vercel.app
 
 ## Demo Video
 
-[()](https://www.youtube.com/watch?v=468Hf5Vu6cI)
+[(www.youtube.com/watch?v=468Hf5Vu6cI)](https://www.youtube.com/watch?v=468Hf5Vu6cI)
 
 ## Technologies
 
