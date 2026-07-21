@@ -1,8 +1,8 @@
-# PSM AI
+# BOB
 
-**Upload a survey. Bob will read the territory.**
+**AI Territory Inspector**
 
-Sprint M1 delivers the first complete cached inspection experience for the Colina Condesa case study while preserving the Sprint M0 editorial interface.
+BOB reads uploaded territorial evidence and presents a clear preliminary inspection using the underlying PSM methodology. Bob is not a chatbot: the experience is designed to feel like an inspector physically moving through the land before presenting its intelligence.
 
 ## Run
 
@@ -11,18 +11,61 @@ npm install
 npm run dev
 ```
 
-## Sprint M1 demo path
+Open `http://localhost:3000`.
 
-1. Land on Bob's introduction.
-2. Select **Try Colina Condesa**.
-3. Watch Bob inspect the territory through a calm six-step loading sequence.
-4. Read Bob's cached inspection narrative.
-5. Review the Territory Dashboard, findings, and system scores.
-6. Reveal the 92 Opportunity Score and Eco Residential Community recommendation.
+## Sprint M2 — Bob Comes Alive
 
-## Current architecture
+The complete cached inspection path remains deterministic and does not require an API key:
 
-- Next.js App Router with React and TypeScript.
-- One client-side inspection state machine.
-- Typed cached Colina Condesa inspection data.
-- No backend, API calls, GPT integration, upload system, or authentication yet.
+1. Select **Start Inspection**.
+2. Watch Bob move through seven territory states: survey, terrain, drainage, vegetation, access, opportunity and synthesis.
+3. Read Bob's Colina Condesa inspection narrative.
+4. Open the dark Territory Dashboard.
+5. Review the territory hero, Bob Inspector panel and Opportunity Score.
+6. Run the inspection again.
+
+The uploaded-survey path remains available and continues to use `POST /api/inspect` with `OPENAI_API_KEY`.
+
+## Bob asset library
+
+Bob is loaded exclusively from `public/assets/bob/`:
+
+```text
+public/assets/bob/
+├── master/
+├── expressions/
+├── animations/
+├── audio/
+├── scenarios.json
+└── README.md
+```
+
+The client fetches `scenarios.json` and selects Bob's animation, expression, optional territory background and audio reference by application state. Scenario entries may be an object map or an array and can use `src`, `path`, `file` or `url` fields. Missing scenario fields fall back through the same Bob asset-library folders; no screen hardcodes a Bob portrait.
+
+Territory backgrounds are handled separately by `TerritoryVisual`, so survey, DEM, terrain, orthophoto, masterplan and opportunity imagery can be replaced by future project data without changing Bob's state machine.
+
+## Architecture
+
+- Next.js App Router, React and TypeScript.
+- One client-side inspection state machine preserving the Sprint M1 flow.
+- `BobRenderer` owns Bob media selection and subtle motion.
+- `TerritoryVisual` owns replaceable project backgrounds and analysis overlays.
+- `InspectionExperience` owns loading timing, upload behavior and screen progression.
+- Cached Colina Condesa mode remains independent from OpenAI.
+- No authentication or database.
+
+## Environment
+
+Create `.env.local` only for live uploaded-survey inspections:
+
+```bash
+OPENAI_API_KEY=your_key_here
+OPENAI_MODEL=gpt-5.6
+```
+
+## Validation
+
+```bash
+npm run lint
+npm run build
+```

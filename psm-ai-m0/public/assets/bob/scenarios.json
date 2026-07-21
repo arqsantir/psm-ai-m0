@@ -1,0 +1,28 @@
+{
+  "landing": {
+    "animation": "sit",
+    "expression": "neutral"
+  },
+
+  "loading": {
+    "animation": "walk",
+    "expression": "curious"
+  },
+
+  "inspection": {
+    "animation": "sniff",
+    "expression": "thinking"
+  },
+
+  "dashboard": {
+    "animation": "tail_wag",
+    "expression": "happy"
+  },
+
+  "report": {
+    "animation": "look_around",
+    "expression": "thinking"
+  }
+}
+
+

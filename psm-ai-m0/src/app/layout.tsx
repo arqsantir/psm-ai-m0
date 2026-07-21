@@ -1,8 +1,8 @@
 import "./styles.css";
 
 export const metadata = {
-  title: "PSM AI — Bob",
-  description: "Upload a survey. Bob will read the territory."
+  title: "BOB — AI Territory Inspector",
+  description: "Upload a survey. Bob will read the territory using the PSM methodology."
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
